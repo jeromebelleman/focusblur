@@ -8,6 +8,10 @@ import sys
 import os
 import subprocess
 from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+import tempfile
+import re
+
+REDIM = re.compile(r'(\d+) x \d+')
 
 SCRIPT = '''
 (let*
@@ -26,9 +30,10 @@ MODELS = ('Flat', 'Spherical', 'Gaussian', 'Ring', 'Concave', 'Brush')
 
 def main():
     '''
-    Parse arguments
+    Run Inkscape and Focus Blur plug-in with GIMP
     '''
 
+    # Parse arguments
     parser = ArgumentParser(description=__doc__,
                             formatter_class=ArgumentDefaultsHelpFormatter)
     parser.add_argument('inimage', help="input image")
@@ -39,25 +44,38 @@ def main():
     parser.add_argument('insvg', help="depth map file")
     parser.add_argument('shining', help="radius for shining")
     parser.add_argument('--threshold', default=2, help="threshold for shining")
-    parser.add_argument('--precedence', action='store_true',
+    parser.add_argument('--noprecedence', action='store_false',
                         help="depth precedence")
     parser.add_argument('outimage', help="output image")
-    parser.add_argument('--debug', action='store_true')
+    parser.add_argument('--debug', action='store_false')
     args = parser.parse_args()
 
-    stderr = open(os.devnull, 'w') if args.debug else None
+    # Get input file dimensions
+    proc = subprocess.Popen(['file', args.inimage], stdout=subprocess.PIPE)
+    out, _ = proc.communicate()
+    width = REDIM.search(out).group(1)
+
+    # Open /dev/null if needs be
+    devnull = open(os.devnull, 'w') if args.debug else None
+
+    # Export Inkscape depth map
+    tmp = tempfile.NamedTemporaryFile()
+    subprocess.call(['inkscape', '-e', tmp.name, '-w', width, args.insvg],
+                    stdout=devnull)
+
+    # Run plug-in
     subprocess.call(['gimp', '-i',
                      '-b', SCRIPT % (args.inimage, args.inimage,
-                                     args.insvg, args.insvg,
+                                     tmp.name, tmp.name,
                                      MODELS.index(args.model),
                                      args.radius,
                                      args.depth,
                                      args.shining,
                                      args.threshold,
-                                     1 if args.precedence else 0,
+                                     1 if args.noprecedence else 0,
                                      args.outimage, args.outimage),
                      '-b', '(gimp-quit 0)'],
-                    stderr=stderr)
+                    stderr=devnull)
 
 
 if __name__ == '__main__':
