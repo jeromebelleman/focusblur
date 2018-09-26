@@ -1,0 +1,64 @@
+#! /usr/bin/env python
+
+'''
+Run Focus Blur filter non-interactively.
+'''
+
+import sys
+import os
+import subprocess
+from argparse import ArgumentParser, ArgumentDefaultsHelpFormatter
+
+SCRIPT = '''
+(let*
+    (
+        (img (car (gimp-file-load RUN-NONINTERACTIVE "%s" "%s")))
+        (map (car (gimp-file-load RUN-NONINTERACTIVE "%s" "%s")))
+        (imgdwb (car (gimp-image-get-active-layer img)))
+        (mapdwb (car (gimp-image-get-active-layer map)))
+    )
+    (plug-in-focusblur RUN-NONINTERACTIVE img imgdwb %s %s %s mapdwb %s %s %s)
+    (gimp-file-save RUN-NONINTERACTIVE img imgdwb "%s" "%s")
+)
+'''
+
+MODELS = ('Flat', 'Spherical', 'Gaussian', 'Ring', 'Concave', 'Brush')
+
+def main():
+    '''
+    Parse arguments
+    '''
+
+    parser = ArgumentParser(description=__doc__,
+                            formatter_class=ArgumentDefaultsHelpFormatter)
+    parser.add_argument('inimage', help="input image")
+    parser.add_argument('--model', choices=MODELS, default='Flat',
+                        help="model of blurring")
+    parser.add_argument('radius', help="radius for blurring")
+    parser.add_argument('--depth', default=0, help="focal depth")
+    parser.add_argument('insvg', help="depth map file")
+    parser.add_argument('shining', help="radius for shining")
+    parser.add_argument('--threshold', default=2, help="threshold for shining")
+    parser.add_argument('--precedence', action='store_true',
+                        help="depth precedence")
+    parser.add_argument('outimage', help="output image")
+    parser.add_argument('--debug', action='store_true')
+    args = parser.parse_args()
+
+    stderr = open(os.devnull, 'w') if args.debug else None
+    subprocess.call(['gimp', '-i',
+                     '-b', SCRIPT % (args.inimage, args.inimage,
+                                     args.insvg, args.insvg,
+                                     MODELS.index(args.model),
+                                     args.radius,
+                                     args.depth,
+                                     args.shining,
+                                     args.threshold,
+                                     1 if args.precedence else 0,
+                                     args.outimage, args.outimage),
+                     '-b', '(gimp-quit 0)'],
+                    stderr=stderr)
+
+
+if __name__ == '__main__':
+    sys.exit(main())
